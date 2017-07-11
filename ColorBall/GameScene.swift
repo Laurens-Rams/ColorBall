@@ -14,13 +14,7 @@ struct PhysicsCategory {
     static let yellowBall: UInt32 = 0b10
 }
 
-
-protocol MyCoolDelegate {
-    func sayHi()
-    func sayBye()
-}
-
-class GameScene: SKScene, SKPhysicsContactDelegate, MyCoolDelegate {
+class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /**
      Constant for the player sprite node.
@@ -43,15 +37,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate, MyCoolDelegate {
      */
     let SPIN_RADIANS = CGFloat(Double.pi * 0.5)
     
-    func sayHi() {
-        print("hi")
-    }
-    
-    func sayBye() {
-        print("bye")
-    }
-    
-    override func didMove(to view: SKView) {
+    override func didMove(to view: SKView) {0
         
         // assign this class as the delgate responsible for physicsWorld contact tasks
         physicsWorld.contactDelegate = self
