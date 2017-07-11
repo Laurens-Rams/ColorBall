@@ -9,81 +9,199 @@
 import SpriteKit
 import GameplayKit
 
-class GameScene: SKScene {
+struct PhysicsCategory {
+    static let playerBall: UInt32 = 0b1
+    static let yellowBall: UInt32 = 0b10
+}
+
+
+protocol MyCoolDelegate {
+    func sayHi()
+    func sayBye()
+}
+
+class GameScene: SKScene, SKPhysicsContactDelegate, MyCoolDelegate {
     
-    private var label : SKLabelNode?
-    private var spinnyNode : SKShapeNode?
+    /**
+     Constant for the player sprite node.
+     */
+    let player = SKSpriteNode(imageNamed: "PlayerBall")
+    
+    /**
+     The duration between spawning new balls.
+     */
+    let BALL_INTERVAL = TimeInterval(0.45)
+    
+    /**
+     The duration over which to rotate the player ball.
+     */
+    let SPIN_INTERVAL = TimeInterval(2.0)
+    
+    /**
+     Distance (relative angle in radians) to rotate the player ball.
+     pi: 3.14
+     */
+    let SPIN_RADIANS = CGFloat(Double.pi * 0.5)
+    
+    func sayHi() {
+        print("hi")
+    }
+    
+    func sayBye() {
+        print("bye")
+    }
     
     override func didMove(to view: SKView) {
         
-        // Get label node from scene and store it for use later
-        self.label = self.childNode(withName: "//helloLabel") as? SKLabelNode
-        if let label = self.label {
-            label.alpha = 0.0
-            label.run(SKAction.fadeIn(withDuration: 2.0))
-        }
+        // assign this class as the delgate responsible for physicsWorld contact tasks
+        physicsWorld.contactDelegate = self
+
+        // set the background color
+        backgroundColor = SKColor(red: 0.5, green: 0, blue: 0.8, alpha: 0.4)
         
-        // Create shape node to use during mouse interaction
-        let w = (self.size.width + self.size.height) * 0.05
-        self.spinnyNode = SKShapeNode.init(rectOf: CGSize.init(width: w, height: w), cornerRadius: w * 0.3)
+        // set the player ball's size
+        player.size = CGSize(width: size.width * 0.5, height: size.width * 0.5)
         
-        if let spinnyNode = self.spinnyNode {
-            spinnyNode.lineWidth = 2.5
-            
-            spinnyNode.run(SKAction.repeatForever(SKAction.rotate(byAngle: CGFloat(Double.pi), duration: 1)))
-            spinnyNode.run(SKAction.sequence([SKAction.wait(forDuration: 0.5),
-                                              SKAction.fadeOut(withDuration: 0.5),
-                                              SKAction.removeFromParent()]))
-        }
-    }
-    
-    
-    func touchDown(atPoint pos : CGPoint) {
-        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
-            n.position = pos
-            n.strokeColor = SKColor.green
-            self.addChild(n)
-        }
-    }
-    
-    func touchMoved(toPoint pos : CGPoint) {
-        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
-            n.position = pos
-            n.strokeColor = SKColor.blue
-            self.addChild(n)
-        }
-    }
-    
-    func touchUp(atPoint pos : CGPoint) {
-        if let n = self.spinnyNode?.copy() as! SKShapeNode? {
-            n.position = pos
-            n.strokeColor = SKColor.red
-            self.addChild(n)
-        }
-    }
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if let label = self.label {
-            label.run(SKAction.init(named: "Pulse")!, withKey: "fadeInOut")
-        }
+        /**
+         A unique name for the player ball node so it can be referenced from SKActions.
+         */
+        let playerName = "Player"
+        player.name = playerName
+
+        /**
+         The player ball's x-coordinate.
+         */
+        let playerX = view.frame.width / 2
         
-        for t in touches { self.touchDown(atPoint: t.location(in: self)) }
+        /**
+         The player ball's y-coordinate.
+         */
+        let playerY = (player.size.height / 2) + (size.height * 0.2)
+        
+        // set the player's starting point
+        player.position = CGPoint(x: playerX, y: playerY)
+        
+        /**
+         The object with physics properties that will be associated with the player's sprite.
+         */
+        let body = SKPhysicsBody(circleOfRadius: player.size.width / 2)
+        body.categoryBitMask = PhysicsCategory.playerBall
+        body.pinned = true
+        body.allowsRotation = true
+        body.angularDamping = 0
+        body.friction = 0
+        // body.restitution = 0 // try getting rid of bouncing; same effect
+        body.isDynamic = false
+        body.usesPreciseCollisionDetection = true
+        
+        player.physicsBody = body
+
+        // add the player to the scene
+        addChild(player)
+        
+        /**
+         Action describing a relative rotation over a duration in seconds.
+         */
+        let rotation = SKAction.rotate(byAngle: SPIN_RADIANS, duration: SPIN_INTERVAL)
+        
+        // run the rotation on loop
+        run(SKAction.repeatForever(
+            SKAction.sequence([
+                SKAction.run(rotation, onChildWithName: "Player"),
+                SKAction.wait(forDuration: SPIN_INTERVAL)
+            ])
+        ))
+        
+        // call the addBall() function as an action, on loop
+        run(SKAction.repeatForever(
+            SKAction.sequence([
+                SKAction.run(addBall),
+                SKAction.wait(forDuration: BALL_INTERVAL)
+            ])
+        ))
     }
     
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchMoved(toPoint: t.location(in: self)) }
+    func didBegin(_ contact: SKPhysicsContact) {
+
+        var firstBody: SKPhysicsBody
+        var secondBody: SKPhysicsBody
+
+        if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
+            firstBody = contact.bodyA
+            secondBody = contact.bodyB
+        } else {
+            firstBody = contact.bodyB
+            secondBody = contact.bodyA
+        }
+
+        if firstBody.categoryBitMask == PhysicsCategory.playerBall && secondBody.categoryBitMask != PhysicsCategory.playerBall {
+            print("Hit player's ball. First contact has been made.")
+            let pin = SKPhysicsJointFixed.joint(withBodyA: firstBody, bodyB: secondBody, anchor: contact.contactPoint)
+            physicsWorld.add(pin)
+            secondBody.categoryBitMask = PhysicsCategory.playerBall
+        }
     }
     
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
+    /**
+     Return a random number.
+     - returns: CGFloat
+     */
+    func random() -> CGFloat {
+        return CGFloat(Float(arc4random()) / 0xFFFFFFFF)
     }
     
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
+    /**
+     Return a random number, between a min value and max value.
+     - parameter min: Lower bound (inclusive).
+     - parameter max: Upper bound (exclusive).
+     - returns: CGFloat
+     */
+    func random(min: CGFloat, max: CGFloat) -> CGFloat {
+        return random() * (max - min) + min
     }
     
-    
-    override func update(_ currentTime: TimeInterval) {
-        // Called before each frame is rendered
+    /**
+     Creates a random colored ball (sprite node) and adds it to the scene.
+     - returns: Void
+     */
+    func addBall() {
+        
+        /**
+         Srite node for the random colored ball.
+         */
+        let ball = SKSpriteNode(imageNamed: "BallYellow")
+        
+        ball.size = CGSize(width: 30, height: 30)
+        
+        /**
+         The starting point along the x-axis, dead-center.
+         */
+        let xPos = size.width / 2
+        
+        /**
+         The starting point for the ball, slightly off the top edge of the screen.
+         */
+        let yPos = size.height + ball.size.height
+        
+        // set the position coordinates
+        ball.position = CGPoint(x: xPos, y: yPos)
+        
+        /**
+         The object with physics properties that will be associated with the player's sprite.
+         */
+        let body = SKPhysicsBody(circleOfRadius: (ball.size.width / 2) - 2)
+        body.categoryBitMask = PhysicsCategory.yellowBall
+        body.contactTestBitMask = PhysicsCategory.playerBall | PhysicsCategory.yellowBall
+        body.allowsRotation = true
+        body.usesPreciseCollisionDetection = true
+        // body.restitution = 0 // try eliminating bouncing here too... same
+        ball.physicsBody = body
+        
+        // add the ball to the scene
+        addChild(ball)
+        
     }
+    
 }
+
+
